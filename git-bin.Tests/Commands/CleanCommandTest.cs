@@ -20,6 +20,24 @@ namespace git_bin.Tests.Commands
         }
 
         [Test]
+        public void GolemTgaDebugging()
+        {
+            var _gitExecutor = new Mock<IGitExecutor>();
+
+            _gitExecutor.Setup(x => x.GetString("config --get-regexp git-bin"))
+                .Returns("git-bin.KeyOne ValueOne\ngit-bin.KeyTwo 2");
+
+            _gitExecutor.Setup(x => x.GetString("rev-parse --git-dir")).Returns("a");   
+            var cleanCommand =new CleanCommand(
+                    new ConfigurationProvider(_gitExecutor.Object),
+                    _cacheManager.Object,
+                    new[] { @"C:\SharedClowns\Golem_Iron.tga" });
+
+            cleanCommand.Execute();
+       } 
+
+
+        [Test]
         public void Ctor_OneArgument_DoesNotThrow()
         {
             Assert.DoesNotThrow(() => 

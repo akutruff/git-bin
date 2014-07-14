@@ -100,7 +100,7 @@ namespace GitBin.Remotes
             }
             catch(AmazonS3Exception e)
             {
-                throw new ಠ_ಠ(GetMessageFromException(e));                
+                throw new Exception(GetMessageFromException(e));                
             }
         }
 

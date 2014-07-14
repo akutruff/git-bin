@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using GitBin.Remotes;
 using System.Threading;
+using System.Text;
 
 namespace GitBin.Commands
 {
@@ -26,9 +27,20 @@ namespace GitBin.Commands
         public void Execute()
         {
             var stdin = Console.OpenStandardInput();
-            var document = GitBinDocument.FromYaml(new StreamReader(stdin));
+            var textReader = new StreamReader(stdin);
+            var yaml = textReader.ReadToEnd();
 
+            var document = GitBinDocument.FromYaml(yaml);
             GitBinConsole.Write("Smudging {0}:", document.Filename);
+
+            //var comparableFilename = document.Filename.ToLower();
+            //if (comparableFilename.Contains("golem_ice.tga"))
+            //{
+            //    for (int i = 0; i < 100000; i++)
+            //    {
+            //        System.Threading.Thread.Sleep(1000);
+            //    }
+            //}
 
             DownloadMissingFiles(document.ChunkHashes);
 
@@ -65,25 +77,51 @@ namespace GitBin.Commands
             var filename = filesToDownload[indexToDownload];
             var fullPath = _cacheManager.GetPathForFile(filename);
 
-            try
-            {
-                _remote.DownloadFile(fullPath, filename);
-            }
-            catch (ಠ_ಠ)
-            {
-                File.Delete(fullPath);
-                throw;
-            }
+            _remote.DownloadFile(fullPath, filename);
         }
 
         private void OutputReassembledChunks(IEnumerable<string> chunkHashes)
         {
             var stdout = Console.OpenStandardOutput();
 
+            List<string> failedHashes = null;
+
             foreach (var chunkHash in chunkHashes)
             {
-                var chunkData = _cacheManager.ReadFileFromCache(chunkHash);
-                stdout.Write(chunkData, 0, chunkData.Length);
+                byte[] chunkData = chunkData = _cacheManager.ReadFileFromCache(chunkHash);
+
+                var hashForFileInCache = CleanCommand.GetHashForChunk(chunkData, chunkData.Length);
+
+                if (string.Compare(chunkHash, hashForFileInCache, true) != 0)
+                {
+                    if (failedHashes == null)
+                    {
+                        failedHashes = new List<string>();
+                    }
+                    failedHashes.Add(chunkHash);
+                    try
+                    {
+                        File.Delete(_cacheManager.GetPathForFile(chunkHash));
+                    }
+                    catch
+                    { }
+                }
+
+                if (failedHashes == null)
+                {
+                    stdout.Write(chunkData, 0, chunkData.Length);
+                }
+            }
+
+            if (failedHashes != null)
+            {
+                StringBuilder sb = new StringBuilder();
+
+                foreach (var item in failedHashes)
+                {
+                    sb.AppendLine(item);
+                }
+                throw new Exception("Hash check failed for: " + sb.ToString());
             }
 
             stdout.Flush();

@@ -87,7 +87,7 @@ namespace GitBin
         public string[] GetFilenamesNotInCache(IEnumerable<string> filenamesToCheck)
         {
             var filenamesInCache = ListFiles().Select(fi => fi.Name);
-            var filenamesNotInCache = filenamesToCheck.Except(filenamesInCache);
+            var filenamesNotInCache = filenamesToCheck.Distinct().Except(filenamesInCache);
 
             return filenamesNotInCache.ToArray();
         }

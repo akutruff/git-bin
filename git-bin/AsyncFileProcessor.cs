@@ -23,7 +23,7 @@ namespace GitBin
 
             lock (sync)
             {
-                while (nextIndexToDownload < filesToDownload.Length)
+                while (lastException == null && nextIndexToDownload < filesToDownload.Length)
                 {
                     int indexToDownload = nextIndexToDownload;
                     totalDownloading++;
@@ -45,22 +45,27 @@ namespace GitBin
                             totalDownloading--;
                             totalFinished++;
 
-                            var percentCompleted = (int)(100 * totalFinished / (float)filesToDownload.Length);
-
-                            if (percentCompleted >= nextToReport)
+                            if (exception == null)
                             {
-                                GitBinConsole.WriteNoPrefix(percentCompleted.ToString());
-                                if (percentCompleted < 100)
+                                var percentCompleted = (int)(100 * totalFinished / (float)filesToDownload.Length);
+
+                                if (percentCompleted >= nextToReport)
                                 {
-                                    GitBinConsole.WriteNoPrefix(".");
+                                    GitBinConsole.WriteNoPrefix(percentCompleted.ToString());
+                                    if (percentCompleted < 100)
+                                    {
+                                        GitBinConsole.WriteNoPrefix(".");
+                                    }
+                                    nextToReport = percentCompleted + 10;
                                 }
-                                nextToReport = percentCompleted + 10;
+
                             }
-
-
-                            if (lastException == null)
+                            else
                             {
-                                lastException = exception;
+                                if (lastException == null)
+                                {
+                                    lastException = exception;
+                                }
                             }
 
                             Monitor.Pulse(sync);
@@ -70,11 +75,6 @@ namespace GitBin
                     while (lastException == null && totalDownloading >= maxSimultaneousDownloads)
                     {
                         Monitor.Wait(sync);
-                    }
-
-                    if (lastException != null)
-                    {
-                        throw lastException;
                     }
 
                     nextIndexToDownload++;
@@ -87,6 +87,10 @@ namespace GitBin
 
                 if (lastException != null)
                 {
+                    while (totalDownloading > 0)
+                    {
+                        Monitor.Wait(sync);
+                    }
                     throw lastException;
                 }
             }

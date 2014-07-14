@@ -28,6 +28,15 @@ namespace GitBin.Commands
         {
             GitBinConsole.WriteLine("Cleaning {0}", _filename);
 
+            //var comparableFilename = _filename.ToLower();
+            //if (comparableFilename.Contains("golem_iron.tga"))
+            //{
+            //    for (int i = 0; i < 100000; i++)
+            //    {
+            //        System.Threading.Thread.Sleep(1000);
+            //    }
+            //}
+
             var document = new GitBinDocument(_filename);
 
             var chunkBuffer = new byte[_configurationProvider.ChunkSize];
@@ -57,7 +66,7 @@ namespace GitBin.Commands
             Console.Out.Flush();
         }
 
-        private static string GetHashForChunk(byte[] chunkBuffer, int chunkLength)
+        public static string GetHashForChunk(byte[] chunkBuffer, int chunkLength)
         {
             var hasher = new SHA256Managed();
 

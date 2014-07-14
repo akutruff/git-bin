@@ -46,7 +46,11 @@ namespace GitBin
         public static GitBinDocument FromYaml(TextReader textReader )
         {
             var yaml = textReader.ReadToEnd();
-            
+            return FromYaml(yaml);
+        }
+
+        public static GitBinDocument FromYaml(string yaml)
+        {
             GitBinDocument document;
             var serializer = new YamlSerializer<GitBinDocument>();
 
