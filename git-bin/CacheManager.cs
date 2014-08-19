@@ -1,4 +1,5 @@
-﻿using System;
+﻿using GitBin.Remotes;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -7,12 +8,12 @@ namespace GitBin
 {
     public interface ICacheManager
     {
+        string[] GetFilesInCacheThatAreNotOnRemote(IRemote remote);
         byte[] ReadFileFromCache(string filename);
         void WriteFileToCache(string filename, byte[] contents, int contentLength);
         void WriteFileToCache(string filename, Stream stream);
         GitBinFileInfo[] ListFiles();
-        bool TryGetFilesInCacheThatAreNotOnRemote(out string[] files);
-        void RecordFilesInRemote(IEnumerable<string> filenamesToRecord);
+        void RecordFilesInRemote(IRemote remote, IEnumerable<string> filenamesToRecord);
         void ClearCache();
         string[] GetFilenamesNotInCache(IEnumerable<string> filenamesToCheck);
         string GetPathForFile(string filename);
@@ -100,38 +101,58 @@ namespace GitBin
             return Path.Combine(_cacheDirectoryInfo.FullName, filename);
         }
 
-        public bool TryGetFilesInCacheThatAreNotOnRemote(out string[] files)
+        public string[] GetFilesInCacheThatAreNotOnRemote(IRemote remote)
         {
+            EnsureRemoteCacheExists(remote);
+
             var cacheFilePath = GetPathForFile(remoteCacheIndexYmlFilename);
-            if (!File.Exists(cacheFilePath))
-            {
-                files = null;
-                return false;
-            }
 
             var document = GitBinDocument.FromYaml(File.ReadAllText(cacheFilePath));
 
             var filesInCache = new HashSet<string>(ListFiles().Select(x => x.Name));
 
+            GitBinConsole.Write("files in cache: " + filesInCache.Count);
+            
             filesInCache.ExceptWith(document.ChunkHashes);
 
-            files = filesInCache.ToArray();
+            GitBinConsole.Write("files in cache not in remote: " + filesInCache.Count());
 
-            return true;
+            return filesInCache.ToArray();
         }
 
-        public void RecordFilesInRemote(IEnumerable<string> filenamesToRecord)
+        private void EnsureRemoteCacheExists(IRemote remote)
         {
             var cacheFilePath = GetPathForFile(remoteCacheIndexYmlFilename);
-            GitBinDocument document;
-            if (!File.Exists(cacheFilePath))
+
+            if (File.Exists(cacheFilePath))
             {
-                document = new GitBinDocument(cacheFilePath);
+                GitBinConsole.Write("found cache file");
+                return;
             }
-            else
+            GitBinConsole.Write("no cache file");
+
+            var remoteFiles = remote.ListFiles();
+
+            GitBinConsole.Write("Remote files found: " + remoteFiles.Length);
+
+            var document = new GitBinDocument(cacheFilePath);
+            foreach (var item in remoteFiles)
             {
-                document = GitBinDocument.FromYaml(File.ReadAllText(cacheFilePath));                
+                document.RecordChunk(item.Name);
             }
+
+            var yml = GitBinDocument.ToYaml(document);
+
+            File.WriteAllText(cacheFilePath, yml);
+        }
+
+        public void RecordFilesInRemote(IRemote remote, IEnumerable<string> filenamesToRecord)
+        {
+            var cacheFilePath = GetPathForFile(remoteCacheIndexYmlFilename);
+
+            EnsureRemoteCacheExists(remote);
+
+            var document = GitBinDocument.FromYaml(File.ReadAllText(cacheFilePath));
 
             var fileNamesHashSet = new HashSet<string>(document.ChunkHashes);
 
@@ -140,12 +161,12 @@ namespace GitBin
                 if (!fileNamesHashSet.Contains(chunkFileName))
                 {
                     document.RecordChunk(chunkFileName);
-                }                
+                }
             }
 
             var yml = GitBinDocument.ToYaml(document);
 
-            File.WriteAllText(cacheFilePath, yml);                       
+            File.WriteAllText(cacheFilePath, yml);
         }
 
     }

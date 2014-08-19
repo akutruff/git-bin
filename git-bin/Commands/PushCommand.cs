@@ -24,19 +24,7 @@ namespace GitBin.Commands
 
         public void Execute()
         {
-            string[] filesToUpload;
-            
-            if (!_cacheManager.TryGetFilesInCacheThatAreNotOnRemote(out filesToUpload))
-            {
-                var filesInRemote = _remote.ListFiles();
-                _cacheManager.RecordFilesInRemote(filesInRemote.Select(x => x.Name));
-
-                if (!_cacheManager.TryGetFilesInCacheThatAreNotOnRemote(out filesToUpload))
-                {
-                    throw new Exception("Unable to record files in remote");
-                }
-            }
-
+            var filesToUpload = _cacheManager.GetFilesInCacheThatAreNotOnRemote(_remote);
 
             if (filesToUpload.Length == 0)
             {
@@ -60,7 +48,7 @@ namespace GitBin.Commands
                         _remote.UploadFile(_cacheManager.GetPathForFile(file), file);
                     });
                 
-                _cacheManager.RecordFilesInRemote(filesToUpload);
+                _cacheManager.RecordFilesInRemote(_remote, filesToUpload);
             }
             Console.WriteLine();
         }
