@@ -29,15 +29,6 @@ namespace GitBin.Commands
         {
             GitBinConsole.WriteLine("Cleaning {0}", _filename);
 
-            //var comparableFilename = _filename.ToLower();
-            //if (comparableFilename.Contains("golem_iron.tga"))
-            //{
-            //    for (int i = 0; i < 100000; i++)
-            //    {
-            //        System.Threading.Thread.Sleep(1000);
-            //    }
-            //}
-
             var document = new GitBinDocument(_filename);
 
             var chunkBuffer = new byte[_configurationProvider.ChunkSize];

@@ -119,6 +119,8 @@ namespace GitBin.Commands
                 }
 
                 AsyncFileProcessor.ProcessFiles(filesToDownload, DownloadFile);
+
+                _cacheManager.RecordFilesInRemote(filesToDownload);
             }
 
             GitBinConsole.WriteLine();

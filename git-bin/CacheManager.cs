@@ -11,6 +11,8 @@ namespace GitBin
         void WriteFileToCache(string filename, byte[] contents, int contentLength);
         void WriteFileToCache(string filename, Stream stream);
         GitBinFileInfo[] ListFiles();
+        bool TryGetFilesInCacheThatAreNotOnRemote(out string[] files);
+        void RecordFilesInRemote(IEnumerable<string> filenamesToRecord);
         void ClearCache();
         string[] GetFilenamesNotInCache(IEnumerable<string> filenamesToCheck);
         string GetPathForFile(string filename);
@@ -18,6 +20,7 @@ namespace GitBin
 
     public class CacheManager : ICacheManager
     {
+        private static readonly string remoteCacheIndexYmlFilename = "remoteGitBinIndex.yml";
         private readonly DirectoryInfo _cacheDirectoryInfo;
 
         public CacheManager(IConfigurationProvider configurationProvider)
@@ -38,7 +41,7 @@ namespace GitBin
         public void WriteFileToCache(string filename, byte[] contents, int contentLength)
         {
             var path = GetPathForFile(filename);
-            
+
             if (File.Exists(path) && new FileInfo(path).Length == contentLength)
                 return;
 
@@ -50,12 +53,12 @@ namespace GitBin
         public void WriteFileToCache(string filename, Stream stream)
         {
             var path = GetPathForFile(filename);
-            
+
             if (File.Exists(path))
-                    return;
+                return;
 
             var buffer = new byte[8192];
-            
+
             var fileStream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, buffer.Length, FileOptions.WriteThrough);
 
             int bytesRead;
@@ -71,7 +74,7 @@ namespace GitBin
         public GitBinFileInfo[] ListFiles()
         {
             var allFiles = _cacheDirectoryInfo.GetFiles();
-            var gitBinFileInfos = allFiles.Select(fi => new GitBinFileInfo(fi.Name, fi.Length));
+            var gitBinFileInfos = allFiles.Where(x => x.Name != remoteCacheIndexYmlFilename).Select(fi => new GitBinFileInfo(fi.Name, fi.Length));
 
             return gitBinFileInfos.ToArray();
         }
@@ -96,5 +99,54 @@ namespace GitBin
         {
             return Path.Combine(_cacheDirectoryInfo.FullName, filename);
         }
+
+        public bool TryGetFilesInCacheThatAreNotOnRemote(out string[] files)
+        {
+            var cacheFilePath = GetPathForFile(remoteCacheIndexYmlFilename);
+            if (!File.Exists(cacheFilePath))
+            {
+                files = null;
+                return false;
+            }
+
+            var document = GitBinDocument.FromYaml(File.ReadAllText(cacheFilePath));
+
+            var filesInCache = new HashSet<string>(ListFiles().Select(x => x.Name));
+
+            filesInCache.ExceptWith(document.ChunkHashes);
+
+            files = filesInCache.ToArray();
+
+            return true;
+        }
+
+        public void RecordFilesInRemote(IEnumerable<string> filenamesToRecord)
+        {
+            var cacheFilePath = GetPathForFile(remoteCacheIndexYmlFilename);
+            GitBinDocument document;
+            if (!File.Exists(cacheFilePath))
+            {
+                document = new GitBinDocument(cacheFilePath);
+            }
+            else
+            {
+                document = GitBinDocument.FromYaml(File.ReadAllText(cacheFilePath));                
+            }
+
+            var fileNamesHashSet = new HashSet<string>(document.ChunkHashes);
+
+            foreach (var chunkFileName in filenamesToRecord)
+            {
+                if (!fileNamesHashSet.Contains(chunkFileName))
+                {
+                    document.RecordChunk(chunkFileName);
+                }                
+            }
+
+            var yml = GitBinDocument.ToYaml(document);
+
+            File.WriteAllText(cacheFilePath, yml);                       
+        }
+
     }
 }
