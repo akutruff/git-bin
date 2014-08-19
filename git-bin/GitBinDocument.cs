@@ -54,16 +54,8 @@ namespace GitBin
             GitBinDocument document;
             var serializer = new YamlSerializer<GitBinDocument>();
 
-            try
-            {
-                document = serializer.Deserialize(new StringReader(yaml));
-            }
-            catch (YamlDotNet.Core.SyntaxErrorException e)
-            {
-                GitBinConsole.WriteLine("Syntax error in YAML file: {0}\n\n File contents:{1}\n", e.Message, yaml);
-                throw;
-            }
-
+            document = serializer.Deserialize(new StringReader(yaml));
+        
             return document;
         }
     }

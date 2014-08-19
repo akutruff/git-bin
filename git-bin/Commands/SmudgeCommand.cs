@@ -13,7 +13,7 @@ namespace GitBin.Commands
         private readonly IRemote _remote;
 
         public SmudgeCommand(
-            ICacheManager cacheManager,
+            ICacheManager cacheManager,            
             IRemote remote,
             string[] args)
         {
@@ -27,24 +27,76 @@ namespace GitBin.Commands
         public void Execute()
         {
             var stdin = Console.OpenStandardInput();
-            var textReader = new StreamReader(stdin);
-            var yaml = textReader.ReadToEnd();
+                        
+            const int numberOfBytesInMebibyte = 1024 * 1024;
+            
+            var chunkBuffer = new byte[numberOfBytesInMebibyte];
+            int numberOfBytesRead;
+            int currentByteInChunk = 0;
 
-            var document = GitBinDocument.FromYaml(yaml);
-            GitBinConsole.Write("Smudging {0}:", document.Filename);
+            Stream stdout = null;
 
-            //var comparableFilename = document.Filename.ToLower();
-            //if (comparableFilename.Contains("golem_ice.tga"))
-            //{
-            //    for (int i = 0; i < 100000; i++)
-            //    {
-            //        System.Threading.Thread.Sleep(1000);
-            //    }
-            //}
+            bool isPassThrough = false; 
 
-            DownloadMissingFiles(document.ChunkHashes);
+            do
+            {
+                numberOfBytesRead = stdin.Read(chunkBuffer, currentByteInChunk, chunkBuffer.Length - currentByteInChunk);
 
-            OutputReassembledChunks(document.ChunkHashes);
+                currentByteInChunk += numberOfBytesRead;
+
+                if ((currentByteInChunk == chunkBuffer.Length || numberOfBytesRead == 0) && currentByteInChunk > 0)
+                {
+                    if (!isPassThrough)
+                    {
+                        if (TryParseYamlFromBufferAndAssembleFileFromCache(chunkBuffer, currentByteInChunk))
+                        {
+                            return;
+                        }
+                        isPassThrough = true;
+                    }
+
+                    if (stdout == null)
+                    {
+                        stdout = Console.OpenStandardOutput();
+                    }
+
+                    stdout.Write(chunkBuffer, 0, currentByteInChunk);
+                    currentByteInChunk = 0;
+                }
+            } while (numberOfBytesRead > 0);
+            
+            if (stdout != null)
+            {
+                GitBinConsole.Write("SKIPPING Smudge");
+                stdout.Flush();
+            }
+        }
+
+        private bool TryParseYamlFromBufferAndAssembleFileFromCache(byte[] chunkBuffer, int totalBytesInChunk)
+        {
+            var textReader = new StreamReader(new MemoryStream(chunkBuffer, 0, totalBytesInChunk));
+
+            GitBinDocument document = null;
+            try
+            {
+                var yaml = textReader.ReadToEnd();
+
+                document = GitBinDocument.FromYaml(yaml);
+                GitBinConsole.Write("Smudging {0}:", document.Filename);
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (document != null)
+            {
+                DownloadMissingFiles(document.ChunkHashes);
+
+                OutputReassembledChunks(document.ChunkHashes);
+            }
+
+            return true;
         }
 
         private void DownloadMissingFiles(IEnumerable<string> chunkHashes)

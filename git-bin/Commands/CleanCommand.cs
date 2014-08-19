@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -41,22 +42,34 @@ namespace GitBin.Commands
 
             var chunkBuffer = new byte[_configurationProvider.ChunkSize];
             int numberOfBytesRead;
-            int totalBytesInChunk = 0;
+            int currentByteInChunk = 0;
 
             var stdin = Console.OpenStandardInput();
 
+            bool isBinaryData = false;
+
             do
             {
-                numberOfBytesRead = stdin.Read(chunkBuffer, totalBytesInChunk, chunkBuffer.Length - totalBytesInChunk);
+                numberOfBytesRead = stdin.Read(chunkBuffer, currentByteInChunk, chunkBuffer.Length - currentByteInChunk);
                 
-                totalBytesInChunk += numberOfBytesRead;
+                currentByteInChunk += numberOfBytesRead;
 
-                if ((totalBytesInChunk == chunkBuffer.Length || numberOfBytesRead == 0) && totalBytesInChunk > 0)
+                if ((currentByteInChunk == chunkBuffer.Length || numberOfBytesRead == 0) && currentByteInChunk > 0)
                 {
-                    var hash = GetHashForChunk(chunkBuffer, totalBytesInChunk);
-                    _cacheManager.WriteFileToCache(hash, chunkBuffer, totalBytesInChunk);
+                    if (!isBinaryData)
+                    {
+                        if(TryParseYamlFromBufferAndPassThroughIfAlreadyYaml(chunkBuffer, currentByteInChunk))
+                        {
+                            return;
+                        }
+
+                        isBinaryData = true;
+                    }
+
+                    var hash = GetHashForChunk(chunkBuffer, currentByteInChunk);
+                    _cacheManager.WriteFileToCache(hash, chunkBuffer, currentByteInChunk);
                     document.RecordChunk(hash);
-                    totalBytesInChunk = 0;
+                    currentByteInChunk = 0;
                 }
             } while (numberOfBytesRead > 0);
 
@@ -75,5 +88,30 @@ namespace GitBin.Commands
 
             return hashString;
         }
+
+        private bool TryParseYamlFromBufferAndPassThroughIfAlreadyYaml(byte[] chunkBuffer, int totalBytesInChunk)
+        {
+            var textReader = new StreamReader(new MemoryStream(chunkBuffer, 0, totalBytesInChunk));
+
+            GitBinDocument document = null;
+            try
+            {
+                var yaml = textReader.ReadToEnd();
+
+                document = GitBinDocument.FromYaml(yaml);
+                GitBinConsole.Write("Smudging {0}:", document.Filename);
+            }
+            catch
+            {
+                return false;
+            }
+
+            var stdout = Console.OpenStandardOutput();
+            stdout.Write(chunkBuffer, 0, totalBytesInChunk);
+            stdout.Flush();
+
+            return true;
+        }
+
     }
 }
