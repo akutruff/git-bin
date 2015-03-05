@@ -5,6 +5,7 @@ using System.Linq;
 using Amazon;
 using Amazon.S3;
 using Amazon.S3.Model;
+using System.Threading;
 
 namespace GitBin.Remotes
 {
@@ -30,6 +31,7 @@ namespace GitBin.Remotes
             _bucketName = configurationProvider.GetString(S3BucketConfigName);
             _key = configurationProvider.GetString(S3KeyConfigName);
             _secretKey = configurationProvider.GetString(S3SecretKeyConfigName);
+            GetClient();
         }
 
         public GitBinFileInfo[] ListFiles()
@@ -84,39 +86,52 @@ namespace GitBin.Remotes
 
         public void DownloadFile(string fullPath, string key)
         {
-            var client = GetClient();
-
-            var getRequest = new GetObjectRequest();
-            getRequest.BucketName = _bucketName;
-            getRequest.Key = key;
-            getRequest.Timeout = RequestTimeoutInMinutes * 60000;
-
-            try
+            Exception lastException = null;
+            
+            for (int i = 0; true; i++)
             {
-                using (var getResponse = client.GetObject(getRequest))
+                var client = GetClient();
+
+                var getRequest = new GetObjectRequest();
+                getRequest.BucketName = _bucketName;
+                getRequest.Key = key;
+                getRequest.Timeout = RequestTimeoutInMinutes * 60000;
+
+                try
                 {
-                    getResponse.WriteObjectProgressEvent += (s, args) => ReportProgress(args);
-                    getResponse.WriteResponseStreamToFile(fullPath);
+                    using (var getResponse = client.GetObject(getRequest))
+                    {
+                        getResponse.WriteObjectProgressEvent += (s, args) => ReportProgress(args);
+                        getResponse.WriteResponseStreamToFile(fullPath);
+                    }
+                    return;
                 }
+                catch (Exception e)
+                {
+                    lastException = e;
+                    File.Delete(fullPath);                    
+                }
+                GitBinConsole.WriteLine("Retrying failed file download.");
+                Thread.Sleep(Math.Min(100 << i, 20000));
             }
-            catch (AmazonS3Exception e)
-            {
-                throw new Exception(GetMessageFromException(e));
-            }
+            throw lastException;
         }
 
         public event Action<int> ProgressChanged;
 
         private AmazonS3 GetClient()
         {
-            if (_client == null)
+            lock (this)
             {
-                _client = AWSClientFactory.CreateAmazonS3Client(
-                    _key,
-                    _secretKey);
-            }
+                if (_client == null)
+                {
+                    _client = AWSClientFactory.CreateAmazonS3Client(
+                        _key,
+                        _secretKey);
+                }
 
-            return _client;
+                return _client;
+            }
         }
 
         private void ReportProgress(TransferProgressArgs args)

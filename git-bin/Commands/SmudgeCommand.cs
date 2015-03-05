@@ -13,7 +13,7 @@ namespace GitBin.Commands
         private readonly IRemote _remote;
 
         public SmudgeCommand(
-            ICacheManager cacheManager,            
+            ICacheManager cacheManager,
             IRemote remote,
             string[] args)
         {
@@ -27,16 +27,16 @@ namespace GitBin.Commands
         public void Execute()
         {
             var stdin = Console.OpenStandardInput();
-                        
+
             const int numberOfBytesInMebibyte = 1024 * 1024;
-            
+
             var chunkBuffer = new byte[numberOfBytesInMebibyte];
             int numberOfBytesRead;
             int currentByteInChunk = 0;
 
             Stream stdout = null;
 
-            bool isPassThrough = false; 
+            bool isPassThrough = false;
 
             do
             {
@@ -64,7 +64,7 @@ namespace GitBin.Commands
                     currentByteInChunk = 0;
                 }
             } while (numberOfBytesRead > 0);
-            
+
             if (stdout != null)
             {
                 GitBinConsole.Write("SKIPPING Smudge");
@@ -91,9 +91,14 @@ namespace GitBin.Commands
 
             if (document != null)
             {
-                DownloadMissingFiles(document.ChunkHashes);
+                var stdOut = Console.OpenStandardOutput();
 
-                OutputReassembledChunks(document.ChunkHashes);
+                bool didFileReconstructionSucceed = false;
+                do
+                {
+                    DownloadMissingFiles(document.ChunkHashes);
+                    didFileReconstructionSucceed = OutputReassembledChunks(document.ChunkHashes, stdOut);
+                } while (!didFileReconstructionSucceed);
             }
 
             return true;
@@ -134,12 +139,10 @@ namespace GitBin.Commands
             _remote.DownloadFile(fullPath, filename);
         }
 
-        private void OutputReassembledChunks(IEnumerable<string> chunkHashes)
+        private bool OutputReassembledChunks(IEnumerable<string> chunkHashes, Stream stdout)
         {
-            var stdout = Console.OpenStandardOutput();
-
-            List<string> failedHashes = null;
-
+                        
+            bool hasFoundFailedHash = false;
             foreach (var chunkHash in chunkHashes)
             {
                 byte[] chunkData = chunkData = _cacheManager.ReadFileFromCache(chunkHash);
@@ -148,11 +151,10 @@ namespace GitBin.Commands
 
                 if (string.Compare(chunkHash, hashForFileInCache, true) != 0)
                 {
-                    if (failedHashes == null)
-                    {
-                        failedHashes = new List<string>();
-                    }
-                    failedHashes.Add(chunkHash);
+                    hasFoundFailedHash = true;
+
+                    GitBinConsole.WriteLine(" Hashcheck failed for: " + chunkHash);
+
                     try
                     {
                         File.Delete(_cacheManager.GetPathForFile(chunkHash));
@@ -161,24 +163,15 @@ namespace GitBin.Commands
                     { }
                 }
 
-                if (failedHashes == null)
+                if (!hasFoundFailedHash)
                 {
-                    stdout.Write(chunkData, 0, chunkData.Length);
+                    stdout.Write(chunkData, 0, chunkData.Length);                    
                 }
             }
-
-            if (failedHashes != null)
-            {
-                StringBuilder sb = new StringBuilder();
-
-                foreach (var item in failedHashes)
-                {
-                    sb.AppendLine(item);
-                }
-                throw new Exception("Hash check failed for: " + sb.ToString());
-            }
-
+            
             stdout.Flush();
+
+            return !hasFoundFailedHash;
         }
     }
 }

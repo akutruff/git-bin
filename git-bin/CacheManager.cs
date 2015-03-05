@@ -90,10 +90,17 @@ namespace GitBin
 
         public string[] GetFilenamesNotInCache(IEnumerable<string> filenamesToCheck)
         {
-            var filenamesInCache = ListFiles().Select(fi => fi.Name);
-            var filenamesNotInCache = filenamesToCheck.Distinct().Except(filenamesInCache);
-
-            return filenamesNotInCache.ToArray();
+            List<string> filesNotInCache = new List<string>();
+           
+            foreach (var filename in filenamesToCheck.Distinct())
+            {
+                if (!File.Exists(GetPathForFile(filename)))
+                {
+                    filesNotInCache.Add(filename);
+                }
+            }
+            
+            return filesNotInCache.ToArray();
         }
 
         public string GetPathForFile(string filename)
@@ -126,10 +133,10 @@ namespace GitBin
 
             if (File.Exists(cacheFilePath))
             {
-                GitBinConsole.Write("found cache file");
+                //GitBinConsole.Write("found cache file");
                 return;
             }
-            GitBinConsole.Write("no cache file");
+            GitBinConsole.Write("No cache file found... getting remote file list");
 
             var remoteFiles = remote.ListFiles();
 
